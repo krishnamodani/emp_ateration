@@ -21,7 +21,7 @@ to activate the env type in the terminal
     venv\Scripts\activate
 
 to run any file use
-    venv/bin/python <file.py>
+    python <file.py>
 
 Once you install more packages using pip remember to add files into requirements.txt
 use the command
