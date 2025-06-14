@@ -35,4 +35,4 @@ to install all the requirements use
 
 to run the file
 
-    streamlit run frontend.py
+    streamlit run runner.py

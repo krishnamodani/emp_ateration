@@ -1,26 +1,19 @@
-# frontend.py
-
 import streamlit as st
-
-st.set_page_config(
-    page_title="Employee Attrition Survey", layout="centered"
-)  # Must be first!
-
 import numpy as np
-from test import AttritionController
+from attrition_framework import AttritionController
 
 
-# ---------- CACHED MODEL LOADER ----------
 @st.cache_resource
 def load_model(model_path):
     """
-    Load and initialize the model controller.
+    Load and initialize the AttritionController with data from the given path.
+    This function is cached to avoid reloading the model on every rerun.
 
     Args:
-        model_path (str): Path to the dataset.
+        model_path (str): Path to the employee attrition dataset.
 
     Returns:
-        AttritionController: Initialized controller with model trained.
+        AttritionController: Initialized and trained controller object.
     """
     controller = AttritionController(data_path=model_path)
     controller.model.load_and_clean_data()
@@ -28,16 +21,15 @@ def load_model(model_path):
     return controller
 
 
-# ---------- STATE MANAGER ----------
 class SurveySessionState:
     """
-    Manages session state across survey questions using Streamlit session_state.
-    Tracks current question, user responses, and provides reset functionality.
+    Manages and persists session state for the survey using Streamlit's session_state.
+    Tracks current question index and user responses.
     """
 
     def __init__(self, total_questions):
         """
-        Initialize state with total number of survey questions.
+        Initialize session state variables.
 
         Args:
             total_questions (int): Total number of questions in the survey.
@@ -46,65 +38,81 @@ class SurveySessionState:
         self._init_state()
 
     def _init_state(self):
-        """Initialize state variables if not already present."""
+        """Initialize session state variables if not already set."""
         if "current_q" not in st.session_state:
             st.session_state.current_q = 0
         if "responses" not in st.session_state:
             st.session_state.responses = []
 
     def get_current_question_index(self):
-        """Returns the index of the current question."""
+        """
+        Get the index of the current question being displayed.
+
+        Returns:
+            int: Current question index.
+        """
         return st.session_state.current_q
 
     def add_response(self, value):
         """
-        Add a response and advance to the next question.
+        Store a user's response and move to the next question.
 
         Args:
-            value (int): Selected satisfaction value (1–5).
+            value (int): Numerical value representing the user's answer.
         """
         st.session_state.responses.append(value)
         st.session_state.current_q += 1
 
     def is_complete(self):
-        """Returns True if all questions have been answered."""
+        """
+        Check if the survey has been completed.
+
+        Returns:
+            bool: True if all questions have been answered.
+        """
         return st.session_state.current_q >= self.total_questions
 
     def get_responses(self):
-        """Returns the responses as a NumPy array."""
+        """
+        Get the list of responses provided by the user.
+
+        Returns:
+            np.ndarray: 2D array of responses.
+        """
         return np.array([st.session_state.responses])
 
     def reset(self):
-        """Resets the entire survey state."""
+        """
+        Reset the survey state and clear previous responses.
+        """
         st.session_state.current_q = 0
         st.session_state.responses = []
         for i in range(self.total_questions):
             st.session_state.pop(f"question_{i}", None)
 
 
-# ---------- VIEW LAYER ----------
 class StreamlitSurveyView:
     """
-    Handles UI rendering of the survey including the progress bar,
-    question display, and final result presentation.
+    Renders the survey UI and progress bar using Streamlit.
+    Manages question display and collects user input.
     """
 
     def __init__(self, questions):
         """
-        Constructor.
+        Initialize the survey view with a list of questions.
 
         Args:
-            questions (list): List of survey questions.
+            questions (List[str]): List of questions to be asked.
         """
         self.questions = questions
         self.state = SurveySessionState(total_questions=len(questions))
 
     def render(self):
         """
-        Main rendering function. Displays title, progress bar, question or result.
+        Render the current survey screen and return completion status.
 
         Returns:
-            bool: True if survey is completed, False otherwise.
+            bool: True if survey is complete, False otherwise.
         """
         st.title("🧑‍💼 Employee Attrition Survey")
 
@@ -120,7 +128,6 @@ class StreamlitSurveyView:
             status_label = f"📌 Question <strong>{current + 1}</strong> of <strong>{total}</strong>"
             display_q = current + 1
 
-        # Progress bar HTML/CSS
         st.markdown(
             f"""
             <style>
@@ -142,7 +149,7 @@ class StreamlitSurveyView:
             .progress-bar {{
                 height: 100%;
                 background: linear-gradient(135deg, #FFA500, #FF8C00);
-                width: {percentage}%;
+                width: {percentage}% ;
                 border-radius: 20px 0 0 20px;
                 transition: width 0.5s ease;
                 position: relative;
@@ -179,20 +186,17 @@ class StreamlitSurveyView:
 
     def display_question(self):
         """
-        Renders the current question and radio button choices.
-        Stores response and moves to the next question.
+        Display the current survey question and collect the user's answer.
         """
         idx = self.state.get_current_question_index()
         st.subheader(f"Question {idx + 1}")
         key = f"question_{idx}"
 
-        # Show the question
         st.markdown(
             f"<div style='font-size: 24px; font-weight: 600; margin-bottom: 8px;'>{self.questions[idx]}</div>",
             unsafe_allow_html=True,
         )
 
-        # Option labels mapped to values
         options = {
             "Not Satisfactory": 1,
             "Slightly Satisfactory": 2,
@@ -201,7 +205,6 @@ class StreamlitSurveyView:
             "Highly Satisfied": 5,
         }
 
-        # Only show unanswered radio
         if key not in st.session_state:
             choice = st.radio(
                 "Choose your satisfaction level:",
@@ -213,37 +216,46 @@ class StreamlitSurveyView:
         else:
             choice = st.session_state[key]
 
-        # Store and proceed
         if choice is not None and len(st.session_state.responses) == idx:
             value = options[choice]
             self.state.add_response(value)
             st.rerun()
 
     def display_result(self):
-        """Displays final success message after completing the survey."""
+        """
+        Display a success message once the survey is complete.
+        """
         st.success("✅ Survey completed.")
 
     def get_user_responses(self):
-        """Returns all collected user responses."""
+        """
+        Retrieve user responses collected during the survey.
+
+        Returns:
+            np.ndarray: 2D array of user responses.
+        """
         return self.state.get_responses()
 
     def reset_survey(self):
-        """Resets the entire survey to the beginning."""
+        """
+        Reset the survey to its initial state.
+        """
         self.state.reset()
 
 
-# ---------- CONTROLLER ----------
-class FrontendController:
+class FormController:
     """
-    Connects model and view logic. Loads the data/model, handles running the app.
+    Controls the overall survey flow by connecting the model and UI components.
     """
 
-    def __init__(self, model_path="employee_attrition_dataset_text_verdict.csv"):
+    def __init__(
+        self, model_path="dataset/employee_attrition_dataset_text_verdict.csv"
+    ):
         """
-        Constructor. Loads model and initializes view.
+        Initialize the controller with model and survey view.
 
         Args:
-            model_path (str): Path to the CSV file with data.
+            model_path (str): Path to the dataset used to train the model.
         """
         self.model_controller = load_model(model_path)
         self.questions = self.model_controller.view.questions
@@ -251,7 +263,7 @@ class FrontendController:
 
     def run(self):
         """
-        Runs the full app. Shows questions, collects responses, and shows prediction.
+        Run the survey view and display prediction upon completion.
         """
         finished = self.view.render()
         if finished:
@@ -261,9 +273,3 @@ class FrontendController:
             if st.button("🔁 Start Over"):
                 self.view.reset_survey()
                 st.rerun()
-
-
-# ---------- MAIN ----------
-if __name__ == "__main__":
-    controller = FrontendController()
-    controller.run()

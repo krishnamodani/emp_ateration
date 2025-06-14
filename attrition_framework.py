@@ -12,6 +12,7 @@ warnings.filterwarnings("ignore")
 # STRATEGY PATTERN (Model Strategy)
 # ================================
 
+
 class ModelStrategy(ABC):
     """
     Interface for machine learning model strategies.
@@ -62,6 +63,7 @@ class RandomForestStrategy(ModelStrategy):
 # FACTORY PATTERN
 # =====================
 
+
 class ModelFactory:
     """
     Factory class to instantiate model strategies based on a given name.
@@ -88,6 +90,7 @@ class ModelFactory:
 # MODEL CLASS (Data & Processing)
 # ===============================
 
+
 class AttritionModel:
     """
     Handles data processing, training, and prediction for the attrition model.
@@ -100,11 +103,11 @@ class AttritionModel:
 
         # Mapping for textual to numeric verdicts
         self.verdict_map = {
-            'Will Leave': 1,
-            'Likely To Leave': 2,
-            'Not Decided': 3,
-            'Less Likely To Leave': 4,
-            'Wont Leave': 5
+            "Will Leave": 1,
+            "Likely To Leave": 2,
+            "Not Decided": 3,
+            "Less Likely To Leave": 4,
+            "Wont Leave": 5,
         }
         self.reverse_verdict_map = {v: k for k, v in self.verdict_map.items()}
 
@@ -115,18 +118,19 @@ class AttritionModel:
         """
         self.df = pd.read_csv(self.data_path)
 
-        self.df['Final_Verdict'] = (
-            self.df['Final_Verdict']
-            .astype(str)
-            .str.strip()
-            .str.title()
+        self.df["Final_Verdict"] = (
+            self.df["Final_Verdict"].astype(str).str.strip().str.title()
         )
 
-        self.df['Final_Verdict_Num'] = self.df['Final_Verdict'].map(self.verdict_map)
+        self.df["Final_Verdict_Num"] = self.df["Final_Verdict"].map(self.verdict_map)
 
-        if self.df['Final_Verdict_Num'].isna().any():
+        if self.df["Final_Verdict_Num"].isna().any():
             print("❌ Unmapped verdict values found:")
-            print(self.df[self.df['Final_Verdict_Num'].isna()]['Final_Verdict'].value_counts())
+            print(
+                self.df[self.df["Final_Verdict_Num"].isna()][
+                    "Final_Verdict"
+                ].value_counts()
+            )
             raise ValueError("Please fix or remove unmapped verdict values.")
 
         self.df.dropna(inplace=True)
@@ -136,8 +140,8 @@ class AttritionModel:
         Trains the model using the given strategy.
         Splits the data, fits the model, and prints accuracy.
         """
-        X = self.df.drop(columns=['Final_Verdict', 'Final_Verdict_Num'])
-        y = self.df['Final_Verdict_Num']
+        X = self.df.drop(columns=["Final_Verdict", "Final_Verdict_Num"])
+        y = self.df["Final_Verdict_Num"]
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
@@ -168,6 +172,7 @@ class AttritionModel:
 # VIEW (User Survey Input)
 # =======================
 
+
 class SurveyView:
     """
     Responsible for displaying survey questions and collecting responses.
@@ -194,7 +199,7 @@ class SurveyView:
             "I see myself working here in the next 12 months.",
             "I rarely think about looking for a job elsewhere.",
             "If offered a similar role elsewhere, I would still prefer to stay here.",
-            "Overall, I am satisfied with my experience in this organization."
+            "Overall, I am satisfied with my experience in this organization.",
         ]
 
     def collect_responses(self):
@@ -204,7 +209,9 @@ class SurveyView:
         Returns:
         - A 2D NumPy array containing the 20 responses (shape: 1 x 20)
         """
-        print("\n📋 Please answer the following 20 questions on a scale of 1 (lowest) to 5 (highest):")
+        print(
+            "\n📋 Please answer the following 20 questions on a scale of 1 (lowest) to 5 (highest):"
+        )
         responses = []
 
         for i, question in enumerate(self.questions, 1):
@@ -225,6 +232,7 @@ class SurveyView:
 # ====================
 # CONTROLLER (Main App)
 # ====================
+
 
 class AttritionController:
     """
@@ -263,5 +271,7 @@ class AttritionController:
 # ====================
 if __name__ == "__main__":
     # Modify the path if your CSV is located elsewhere
-    controller = AttritionController(data_path="employee_attrition_dataset_text_verdict.csv")
+    controller = AttritionController(
+        data_path="dataset/employee_attrition_dataset_text_verdict.csv"
+    )
     controller.run()
