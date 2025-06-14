@@ -13,6 +13,15 @@ from test import AttritionController
 # ---------- CACHED MODEL LOADER ----------
 @st.cache_resource
 def load_model(model_path):
+    """
+    Load and initialize the model controller.
+
+    Args:
+        model_path (str): Path to the dataset.
+
+    Returns:
+        AttritionController: Initialized controller with model trained.
+    """
     controller = AttritionController(data_path=model_path)
     controller.model.load_and_clean_data()
     controller.model.train()
@@ -21,32 +30,52 @@ def load_model(model_path):
 
 # ---------- STATE MANAGER ----------
 class SurveySessionState:
-    """Singleton-style session state manager."""
+    """
+    Manages session state across survey questions using Streamlit session_state.
+    Tracks current question, user responses, and provides reset functionality.
+    """
 
     def __init__(self, total_questions):
+        """
+        Initialize state with total number of survey questions.
+
+        Args:
+            total_questions (int): Total number of questions in the survey.
+        """
         self.total_questions = total_questions
         self._init_state()
 
     def _init_state(self):
+        """Initialize state variables if not already present."""
         if "current_q" not in st.session_state:
             st.session_state.current_q = 0
         if "responses" not in st.session_state:
             st.session_state.responses = []
 
     def get_current_question_index(self):
+        """Returns the index of the current question."""
         return st.session_state.current_q
 
     def add_response(self, value):
+        """
+        Add a response and advance to the next question.
+
+        Args:
+            value (int): Selected satisfaction value (1–5).
+        """
         st.session_state.responses.append(value)
         st.session_state.current_q += 1
 
     def is_complete(self):
+        """Returns True if all questions have been answered."""
         return st.session_state.current_q >= self.total_questions
 
     def get_responses(self):
+        """Returns the responses as a NumPy array."""
         return np.array([st.session_state.responses])
 
     def reset(self):
+        """Resets the entire survey state."""
         st.session_state.current_q = 0
         st.session_state.responses = []
         for i in range(self.total_questions):
@@ -55,29 +84,43 @@ class SurveySessionState:
 
 # ---------- VIEW LAYER ----------
 class StreamlitSurveyView:
-    """Handles UI rendering."""
+    """
+    Handles UI rendering of the survey including the progress bar,
+    question display, and final result presentation.
+    """
 
     def __init__(self, questions):
+        """
+        Constructor.
+
+        Args:
+            questions (list): List of survey questions.
+        """
         self.questions = questions
         self.state = SurveySessionState(total_questions=len(questions))
 
     def render(self):
+        """
+        Main rendering function. Displays title, progress bar, question or result.
+
+        Returns:
+            bool: True if survey is completed, False otherwise.
+        """
         st.title("🧑‍💼 Employee Attrition Survey")
 
         current = self.state.get_current_question_index()
         total = self.state.total_questions
         percentage = int((current / total) * 100)
 
-        # Determine status label
         if current >= total:
             status_label = "✅ Completed"
             percentage = 100
-            display_q = total  # avoid showing 21 of 20
+            display_q = total
         else:
             status_label = f"📌 Question <strong>{current + 1}</strong> of <strong>{total}</strong>"
             display_q = current + 1
 
-        # HTML/CSS for animated progress bar with moving percentage
+        # Progress bar HTML/CSS
         st.markdown(
             f"""
             <style>
@@ -87,7 +130,6 @@ class StreamlitSurveyView:
                 margin-bottom: 0.5rem;
                 color: #333;
             }}
-
             .progress-container {{
                 position: relative;
                 width: 90%;
@@ -97,7 +139,6 @@ class StreamlitSurveyView:
                 overflow: hidden;
                 margin-bottom: 25px;
             }}
-
             .progress-bar {{
                 height: 100%;
                 background: linear-gradient(135deg, #FFA500, #FF8C00);
@@ -106,7 +147,6 @@ class StreamlitSurveyView:
                 transition: width 0.5s ease;
                 position: relative;
             }}
-
             .percentage-label {{
                 position: absolute;
                 top: 50%;
@@ -138,17 +178,21 @@ class StreamlitSurveyView:
             return True
 
     def display_question(self):
+        """
+        Renders the current question and radio button choices.
+        Stores response and moves to the next question.
+        """
         idx = self.state.get_current_question_index()
         st.subheader(f"Question {idx + 1}")
         key = f"question_{idx}"
 
-        # --- Display the main question ---
+        # Show the question
         st.markdown(
             f"<div style='font-size: 24px; font-weight: 600; margin-bottom: 8px;'>{self.questions[idx]}</div>",
             unsafe_allow_html=True,
         )
 
-        # Label map: Display text -> Actual value
+        # Option labels mapped to values
         options = {
             "Not Satisfactory": 1,
             "Slightly Satisfactory": 2,
@@ -157,7 +201,7 @@ class StreamlitSurveyView:
             "Highly Satisfied": 5,
         }
 
-        # Only render the radio if not already answered
+        # Only show unanswered radio
         if key not in st.session_state:
             choice = st.radio(
                 "Choose your satisfaction level:",
@@ -169,32 +213,46 @@ class StreamlitSurveyView:
         else:
             choice = st.session_state[key]
 
-        # Store response and advance
+        # Store and proceed
         if choice is not None and len(st.session_state.responses) == idx:
             value = options[choice]
             self.state.add_response(value)
             st.rerun()
 
     def display_result(self):
+        """Displays final success message after completing the survey."""
         st.success("✅ Survey completed.")
 
     def get_user_responses(self):
+        """Returns all collected user responses."""
         return self.state.get_responses()
 
     def reset_survey(self):
+        """Resets the entire survey to the beginning."""
         self.state.reset()
 
 
 # ---------- CONTROLLER ----------
 class FrontendController:
-    """Orchestrates model and view."""
+    """
+    Connects model and view logic. Loads the data/model, handles running the app.
+    """
 
     def __init__(self, model_path="employee_attrition_dataset_text_verdict.csv"):
+        """
+        Constructor. Loads model and initializes view.
+
+        Args:
+            model_path (str): Path to the CSV file with data.
+        """
         self.model_controller = load_model(model_path)
         self.questions = self.model_controller.view.questions
         self.view = StreamlitSurveyView(self.questions)
 
     def run(self):
+        """
+        Runs the full app. Shows questions, collects responses, and shows prediction.
+        """
         finished = self.view.render()
         if finished:
             responses = self.view.get_user_responses()
