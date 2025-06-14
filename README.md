@@ -33,3 +33,6 @@ to install all the requirements use
 
     pip install -r requirements.txt
 
+to run the file
+
+    streamlit run frontend.py
