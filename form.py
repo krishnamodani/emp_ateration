@@ -1,17 +1,34 @@
 import streamlit as st
 import numpy as np
-from attrition_framework import AttritionController
 import sqlite3
+from attrition_framework import AttritionController
 
 
 @st.cache_resource
-def load_model(model_path):
+def load_model(model_path: str) -> AttritionController:
+    """
+    Load the pre-trained AttritionController model once using Streamlit's resource caching.
+
+    Args:
+        model_path (str): Path to the CSV or model file.
+
+    Returns:
+        AttritionController: An instance of the model controller.
+    """
     controller = AttritionController(csv_path=model_path)
     return controller
 
 
 class FormController:
-    def __init__(self, emp_id, db_path="data/attrition.db"):
+    """
+    Handles the employee satisfaction survey form:
+    - Presents questions
+    - Captures responses
+    - Predicts attrition likelihood
+    - Saves results to SQLite database
+    """
+
+    def __init__(self, emp_id: str, db_path: str = "data/attrition.db"):
         self.emp_id = emp_id
         self.db_path = db_path
         self.model_controller = load_model(
@@ -19,6 +36,7 @@ class FormController:
         )
         self.submitted = False
 
+        # Survey questions (must match model features order)
         self.questions = [
             "Do you feel satisfied with the work you do on a daily basis?",
             "Do you feel motivated to do your best at work every day?",
@@ -50,7 +68,13 @@ class FormController:
             "Wont Leave": 5,
         }
 
-    def has_already_submitted(self):
+    def has_already_submitted(self) -> bool:
+        """
+        Check if the employee has already submitted the survey.
+
+        Returns:
+            bool: True if the employee has already submitted, else False.
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM survey_results WHERE emp_id = ?", (self.emp_id,))
@@ -58,7 +82,14 @@ class FormController:
         conn.close()
         return result is not None
 
-    def save_to_database(self, responses, prediction_text):
+    def save_to_database(self, responses: list, prediction_text: str) -> None:
+        """
+        Save the employee's responses and prediction result to the database.
+
+        Args:
+            responses (list): List of integer responses (1–5 scale).
+            prediction_text (str): Final prediction label from the model.
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -93,7 +124,11 @@ class FormController:
         conn.commit()
         conn.close()
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Render the survey form in the Streamlit interface, handle submission logic,
+        call model prediction, and update database.
+        """
         st.title("📝 Employee Satisfaction Survey")
 
         if self.has_already_submitted():
@@ -108,6 +143,7 @@ class FormController:
                 self.logout()
             st.stop()
 
+        # Likert scale options
         options = {
             "Not Satisfactory": 1,
             "Slightly Satisfactory": 2,
@@ -122,11 +158,13 @@ class FormController:
         with st.form("survey_form"):
             st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
 
+            # Render each question
             for i, question in enumerate(self.questions, 1):
                 st.markdown(
                     f"<div style='font-size:18px; font-weight:600;'>Q{i}. {question}</div>",
                     unsafe_allow_html=True,
                 )
+
                 response = st.radio(
                     label="Select your response:",
                     options=list(options.keys()),
@@ -134,12 +172,14 @@ class FormController:
                     index=None,
                     horizontal=True,
                 )
+
                 if response:
                     responses.append(options[response])
                 else:
                     responses.append(None)
                     errors.append(i)
 
+                # Separator between questions
                 if i < len(self.questions):
                     st.markdown(
                         "<hr style='border: 1px solid white;'>", unsafe_allow_html=True
@@ -147,6 +187,7 @@ class FormController:
 
             submitted = st.form_submit_button("Submit")
 
+        # Handle submission
         if submitted:
             if None in responses:
                 st.error(
@@ -154,13 +195,15 @@ class FormController:
                 )
                 st.stop()
 
+            # Predict attrition using model
             prediction_text = self.model_controller.predict_from_dict(
                 dict(zip(self.model_controller.get_features(), responses))
             )
 
+            # Save to DB
             self.save_to_database(responses, prediction_text)
-            st.success(f"✅ Your responses have been recorded.\n")
-            # st.info(f"📊 Final Verdict: **{prediction_text}**")
+            st.success("✅ Your responses have been recorded.")
+            # st.success(f"🔮 Prediction: {prediction_text}")
 
             self.submitted = True
 
@@ -176,7 +219,10 @@ class FormController:
 
         st.warning("📌 Please complete and submit the form.")
 
-    def logout(self):
+    def logout(self) -> None:
+        """
+        Clears session state and reruns the app.
+        """
         for key in [
             "logged_in",
             "emp_id",

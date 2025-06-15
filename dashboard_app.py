@@ -1,3 +1,7 @@
+# ==========================================
+# 📊 Employee Attrition Dashboard (Streamlit)
+# ==========================================
+
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -8,27 +12,29 @@ from io import BytesIO
 import os
 import base64
 
+# ==================================
+# 🔐 Session Management Utilities
+# ==================================
 
-# === Logout Function ===
+
 def logout():
-    for key in [
-        "logged_in",
-        "emp_id",
-        "auth_level",
-        "admin_page",
-        "form_submitted",
-    ]:
+    """Clear all session states and rerun app to log out."""
+    for key in ["logged_in", "emp_id", "auth_level", "admin_page", "form_submitted"]:
         st.session_state.pop(key, None)
     st.rerun()
 
 
-# === Go Back Function ===
 def go_back_to_menu():
+    """Reset admin view and rerun app."""
     st.session_state.admin_page = None
     st.rerun()
 
 
-# === Fallback for __file__ ===
+# ====================================
+# 📂 Define Paths & Load Environment
+# ====================================
+
+# Handle base path when __file__ is not defined (like in Streamlit Cloud)
 try:
     base_path = os.path.dirname(__file__)
 except NameError:
@@ -36,9 +42,13 @@ except NameError:
 
 DB_PATH = os.path.join(base_path, "data", "attrition.db")
 
+# =================================
+# 📥 Load Data from SQLite Database
+# =================================
 
-# === Load data from DB ===
+
 def fetch_data():
+    """Fetch combined survey and employee data from SQLite DB."""
     try:
         conn = sqlite3.connect(DB_PATH)
         query = """
@@ -49,22 +59,24 @@ def fetch_data():
         df = pd.read_sql(query, conn)
         conn.close()
 
-        verdict_map = {
-            "1": "Will Leave",
-            "2": "Likely to Leave",
-            "3": "Not Decided",
-            "4": "Less Likely to Leave",
-            "5": "Won't Leave",
-        }
+        # Standardize verdict labels
         df["Final_Verdict"] = df["Final_Verdict"].astype(str).str.strip()
         return df
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"❌ Error loading data: {e}")
         return pd.DataFrame()
 
 
-# === Grouped bar chart ===
+# =====================================
+# 📊 Visualization: Grouped Bar Charts
+# =====================================
+
+
 def plot_grouped_bars(df, question_cols, group_by):
+    """
+    Generate grouped bar charts for survey questions by group.
+    Returns a buffer of the plot image.
+    """
     try:
         grouped = df.groupby(group_by)[question_cols].mean()
         fig, axs = plt.subplots(5, 4, figsize=(22, 18))
@@ -86,27 +98,34 @@ def plot_grouped_bars(df, question_cols, group_by):
         buf.seek(0)
         return buf
     except Exception as e:
-        st.error(f"Error generating grouped bar chart: {e}")
+        st.error(f"❌ Error generating grouped bar chart: {e}")
         return BytesIO()
 
 
-# === Main Dashboard ===
-def run_dashboard():
-    # --- Buttons at the Top ---
+# ============================
+# 🚀 Main Dashboard Function
+# ============================
 
+
+def run_dashboard():
+    """Render the Streamlit dashboard for employee attrition analysis."""
+
+    # --- Navigation Buttons ---
     if st.session_state.get("auth_level") == "admin":
         if st.button("🔙 Back to Admin Menu"):
             go_back_to_menu()
     if st.button("🚪 Logout"):
         logout()
 
-    # --- Title ---
+    # --- Page Title ---
     st.title("📊 Employee Attrition Dashboard")
 
+    # --- Load Data ---
     df = fetch_data()
     if df.empty:
         return
 
+    # --- Sidebar Filters ---
     with st.sidebar:
         st.header("🔍 Filter Options")
         selected_dept = st.multiselect(
@@ -129,9 +148,11 @@ def run_dashboard():
         st.warning("⚠️ No data matches your filter criteria.")
         return
 
+    # --- Raw Data Preview ---
     if st.checkbox("📄 Show Raw Filtered Data"):
         st.dataframe(filtered_df.drop(columns=["emp_id", "srno"]).head(20))
 
+    # --- Pie Chart: Final Verdict ---
     if "Final_Verdict" in filtered_df.columns:
         st.markdown("### 🥧 Attrition Verdict Distribution")
         verdict_counts = filtered_df["Final_Verdict"].value_counts()
@@ -144,6 +165,7 @@ def run_dashboard():
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
+    # --- Question Columns ---
     question_cols = [
         col
         for col in filtered_df.columns
@@ -152,12 +174,14 @@ def run_dashboard():
         and pd.api.types.is_numeric_dtype(filtered_df[col])
     ][:20]
 
+    # --- Grouped Bar Charts ---
     st.markdown("### 📈 Average Scores by Group")
     for group_by in ["location", "position", "dept"]:
         st.subheader(f"Grouped by {group_by.title()}")
         buf = plot_grouped_bars(filtered_df, question_cols, group_by)
         st.image(buf, use_container_width=True)
 
+    # --- Heatmap ---
     st.markdown("### 🔥 Correlation Heatmap")
     try:
         corr = filtered_df[question_cols].corr()
@@ -174,9 +198,11 @@ def run_dashboard():
             buf, caption="Correlation Between Survey Metrics", use_container_width=True
         )
     except Exception as e:
-        st.error(f"Error generating heatmap: {e}")
+        st.error(f"❌ Error generating heatmap: {e}")
 
+    # --- HR Alerts ---
     st.markdown("### 🚨 HR Attention Required")
+
     alert_columns = {
         "12_Month_Commitment": {
             "type": "low",
@@ -219,6 +245,7 @@ def run_dashboard():
             if not alert_found:
                 st.info("✅ No alerts triggered based on current thresholds.")
 
+    # --- Recommendations ---
     st.markdown("### 💡 Recommendations to Reduce Attrition")
     st.markdown(
         """
@@ -230,6 +257,7 @@ def run_dashboard():
     """
     )
 
+    # --- CSV Export ---
     st.markdown("### 📥 Export Data")
     st.download_button(
         "⬇️ Download Filtered Data (CSV)",
@@ -237,6 +265,7 @@ def run_dashboard():
         file_name="filtered_attrition_data.csv",
     )
 
+    # --- PDF Report Export ---
     st.markdown("### 📄 Download PDF Report")
     alert_list = []
     for group_by in ["dept", "position", "location"]:
@@ -285,9 +314,12 @@ def run_dashboard():
         else:
             st.error("❌ Failed to generate PDF. Please try again.")
     except Exception as e:
-        st.error(f"PDF generation failed: {e}")
+        st.error(f"❌ PDF generation failed: {e}")
 
 
-# === Launch Dashboard ===
+# =========================
+# 🏁 Entry Point
+# =========================
+
 if __name__ == "__main__":
     run_dashboard()

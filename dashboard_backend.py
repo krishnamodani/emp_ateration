@@ -7,8 +7,18 @@ import base64
 from io import BytesIO
 
 
-# === Load and merge data from DB ===
+# === Load and Merge Data ===
 def load_merged_data(db_path: str) -> pd.DataFrame:
+    """
+    Connects to the SQLite database and loads merged data from
+    'survey_results' and 'employees' tables.
+
+    Args:
+        db_path (str): Path to the SQLite database file.
+
+    Returns:
+        pd.DataFrame: Merged DataFrame with employee survey data.
+    """
     conn = sqlite3.connect(db_path)
     query = """
         SELECT s.*, e.location, e.dept, e.position
@@ -20,8 +30,18 @@ def load_merged_data(db_path: str) -> pd.DataFrame:
     return df
 
 
-# === Get only numeric question columns ===
+# === Get Question Columns ===
 def get_question_columns(df: pd.DataFrame) -> list:
+    """
+    Extracts numeric columns representing survey questions,
+    excluding known metadata columns.
+
+    Args:
+        df (pd.DataFrame): DataFrame to extract columns from.
+
+    Returns:
+        list: List of column names.
+    """
     exclude = ["emp_id", "srno", "Final_Verdict", "dept", "location", "position"]
     return [
         col
@@ -30,16 +50,25 @@ def get_question_columns(df: pd.DataFrame) -> list:
     ]
 
 
-# === Generate Visualizations ===
+# === Generate Visualizations for PDF/Reports ===
 def generate_visualizations(df: pd.DataFrame) -> dict:
+    """
+    Generates key visualizations including grouped bar charts, pie chart,
+    and correlation heatmap from the input DataFrame.
+
+    Args:
+        df (pd.DataFrame): Cleaned and merged DataFrame.
+
+    Returns:
+        dict: Dictionary containing visualizations encoded as base64 strings or plotly objects.
+    """
     figs = {}
     question_cols = get_question_columns(df)[:20]
-    master_params = ["location", "position", "dept"]
+    group_by_options = ["location", "position", "dept"]
 
-    # === Grouped Bar Charts ===
-    for param in master_params:
+    # === Grouped Bar Charts by group_by field ===
+    for param in group_by_options:
         grouped = df.groupby(param)[question_cols].mean()
-
         fig, axs = plt.subplots(5, 4, figsize=(22, 18))
         fig.suptitle(f"Survey Question Scores by {param.title()}", fontsize=20)
 
@@ -60,7 +89,7 @@ def generate_visualizations(df: pd.DataFrame) -> dict:
         buf.close()
         plt.close()
 
-    # === Pie Chart for Verdicts ===
+    # === Pie Chart for Final Verdict ===
     verdict_map = {
         "1": "Will Leave",
         "2": "Likely to Leave",
@@ -77,9 +106,11 @@ def generate_visualizations(df: pd.DataFrame) -> dict:
         title="Attrition Verdict Distribution",
         color_discrete_sequence=px.colors.sequential.RdBu,
     )
-    figs["verdict_pie"] = pie_chart
+    figs["verdict_pie"] = (
+        pie_chart  # Not base64-encoded because Plotly handles rendering
+    )
 
-    # === Correlation Heatmap ===
+    # === Correlation Heatmap of Question Scores ===
     plt.figure(figsize=(14, 8))
     sns.heatmap(
         df[question_cols].corr(),
@@ -99,8 +130,18 @@ def generate_visualizations(df: pd.DataFrame) -> dict:
     return figs
 
 
-# === Optional: Generate Alert Data ===
+# === Generate Alerts from Survey Metrics ===
 def generate_alerts(df: pd.DataFrame) -> list:
+    """
+    Generates alert messages if survey metrics cross threshold values
+    that indicate attrition risk or disengagement.
+
+    Args:
+        df (pd.DataFrame): Merged DataFrame with employee data.
+
+    Returns:
+        list: List of alert strings with warnings.
+    """
     alert_columns = {
         "12_Month_Commitment": {
             "type": "low",
@@ -124,6 +165,7 @@ def generate_alerts(df: pd.DataFrame) -> list:
             "label": "Feedback Received",
         },
     }
+
     master_params = ["dept", "position", "location"]
     alerts = []
 
