@@ -1,5 +1,4 @@
-# emp_ateration
-krishna modani 
+# emp_attrition
 
 the code is running via a virtual env
 
@@ -11,23 +10,21 @@ to make a virtual env
     windows
     python -m venv venv
 
-
 to activate the env type in the terminal
 
-    mac 
+    mac
     source venv/bin/activate
 
     windows
     venv\Scripts\activate
 
 to run any file use
-    python <file.py>
+python <file.py>
 
 Once you install more packages using pip remember to add files into requirements.txt
 use the command
 
     pip freeze > requirements.txt
-
 
 to install all the requirements use
 
