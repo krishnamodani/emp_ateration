@@ -1,201 +1,112 @@
 import streamlit as st
 import numpy as np
 from attrition_framework import AttritionController
+import sqlite3
 
 
 @st.cache_resource
 def load_model(model_path):
-    """
-    Load and initialize the AttritionController with data from the given path.
-    This function is cached to avoid reloading the model on every rerun.
-
-    Args:
-        model_path (str): Path to the employee attrition dataset.
-
-    Returns:
-        AttritionController: Initialized and trained controller object.
-    """
-    controller = AttritionController(data_path=model_path)
-    controller.model.load_and_clean_data()
-    controller.model.train()
+    controller = AttritionController(csv_path=model_path)
     return controller
 
 
-class SurveySessionState:
-    """
-    Manages and persists session state for the survey using Streamlit's session_state.
-    Tracks current question index and user responses.
-    """
-
-    def __init__(self, total_questions):
-        """
-        Initialize session state variables.
-
-        Args:
-            total_questions (int): Total number of questions in the survey.
-        """
-        self.total_questions = total_questions
-        self._init_state()
-
-    def _init_state(self):
-        """Initialize session state variables if not already set."""
-        if "current_q" not in st.session_state:
-            st.session_state.current_q = 0
-        if "responses" not in st.session_state:
-            st.session_state.responses = []
-
-    def get_current_question_index(self):
-        """
-        Get the index of the current question being displayed.
-
-        Returns:
-            int: Current question index.
-        """
-        return st.session_state.current_q
-
-    def add_response(self, value):
-        """
-        Store a user's response and move to the next question.
-
-        Args:
-            value (int): Numerical value representing the user's answer.
-        """
-        st.session_state.responses.append(value)
-        st.session_state.current_q += 1
-
-    def is_complete(self):
-        """
-        Check if the survey has been completed.
-
-        Returns:
-            bool: True if all questions have been answered.
-        """
-        return st.session_state.current_q >= self.total_questions
-
-    def get_responses(self):
-        """
-        Get the list of responses provided by the user.
-
-        Returns:
-            np.ndarray: 2D array of responses.
-        """
-        return np.array([st.session_state.responses])
-
-    def reset(self):
-        """
-        Reset the survey state and clear previous responses.
-        """
-        st.session_state.current_q = 0
-        st.session_state.responses = []
-        for i in range(self.total_questions):
-            st.session_state.pop(f"question_{i}", None)
-
-
-class StreamlitSurveyView:
-    """
-    Renders the survey UI and progress bar using Streamlit.
-    Manages question display and collects user input.
-    """
-
-    def __init__(self, questions):
-        """
-        Initialize the survey view with a list of questions.
-
-        Args:
-            questions (List[str]): List of questions to be asked.
-        """
-        self.questions = questions
-        self.state = SurveySessionState(total_questions=len(questions))
-
-    def render(self):
-        """
-        Render the current survey screen and return completion status.
-
-        Returns:
-            bool: True if survey is complete, False otherwise.
-        """
-        st.title("🧑‍💼 Employee Attrition Survey")
-
-        current = self.state.get_current_question_index()
-        total = self.state.total_questions
-        percentage = int((current / total) * 100)
-
-        if current >= total:
-            status_label = "✅ Completed"
-            percentage = 100
-            display_q = total
-        else:
-            status_label = f"📌 Question <strong>{current + 1}</strong> of <strong>{total}</strong>"
-            display_q = current + 1
-
-        st.markdown(
-            f"""
-            <style>
-            .question-status {{
-                font-size: 1.1rem;
-                font-weight: 600;
-                margin-bottom: 0.5rem;
-                color: #333;
-            }}
-            .progress-container {{
-                position: relative;
-                width: 90%;
-                height: 28px;
-                background-color: #f1f1f1;
-                border-radius: 20px;
-                overflow: hidden;
-                margin-bottom: 25px;
-            }}
-            .progress-bar {{
-                height: 100%;
-                background: linear-gradient(135deg, #FFA500, #FF8C00);
-                width: {percentage}% ;
-                border-radius: 20px 0 0 20px;
-                transition: width 0.5s ease;
-                position: relative;
-            }}
-            .percentage-label {{
-                position: absolute;
-                top: 50%;
-                left: {min(percentage, 97)}%;
-                transform: translate(-100%, -50%);
-                font-size: 0.85rem;
-                font-weight: 600;
-                color: #fff;
-                text-shadow: 0 0 3px rgba(0,0,0,0.4);
-                transition: left 0.5s ease;
-                white-space: nowrap;
-            }}
-            </style>
-
-            <div class="question-status">{status_label}</div>
-            <div class="progress-container">
-                <div class="progress-bar"></div>
-                <div class="percentage-label">{percentage}%</div>
-            </div>
-        """,
-            unsafe_allow_html=True,
+class FormController:
+    def __init__(self, emp_id, db_path="data/attrition.db"):
+        self.emp_id = emp_id
+        self.db_path = db_path
+        self.model_controller = load_model(
+            "dataset/employee_attrition_dataset_text_verdict.csv"
         )
+        self.submitted = False
 
-        if not self.state.is_complete():
-            self.display_question()
-            return False
-        else:
-            self.display_result()
-            return True
+        self.questions = [
+            "Do you feel satisfied with the work you do on a daily basis?",
+            "Do you feel motivated to do your best at work every day?",
+            "Does your current role align well with your skills and interests?",
+            "Do you feel recognized and appreciated for your contributions?",
+            "Do you have adequate opportunities for growth and advancement in this organization?",
+            "Do you receive regular feedback that helps you improve your performance?",
+            "Do you believe your career goals can be achieved in this organization?",
+            "Do you feel respected and valued by your coworkers?",
+            "Does the work environment here promote collaboration and inclusion?",
+            "Do you feel like you belong in this organization?",
+            "Does your manager support you in your professional development?",
+            "Do you trust the leadership of this organization?",
+            "Does management communicate openly and transparently?",
+            "Are you able to maintain a healthy work-life balance?",
+            "Do you feel mentally and physically well at work?",
+            "Is your workload manageable and fair?",
+            "Do you see yourself working here in the next 12 months?",
+            "Do you rarely think about looking for a job elsewhere?",
+            "If offered a similar role elsewhere, would you still prefer to stay here?",
+            "Are you overall satisfied with your experience in this organization?",
+        ]
 
-    def display_question(self):
-        """
-        Display the current survey question and collect the user's answer.
-        """
-        idx = self.state.get_current_question_index()
-        st.subheader(f"Question {idx + 1}")
-        key = f"question_{idx}"
+        self.prediction_map = {
+            "Will Leave": 1,
+            "Likely To Leave": 2,
+            "Not Decided": 3,
+            "Less Likely To Leave": 4,
+            "Wont Leave": 5,
+        }
 
-        st.markdown(
-            f"<div style='font-size: 24px; font-weight: 600; margin-bottom: 8px;'>{self.questions[idx]}</div>",
-            unsafe_allow_html=True,
+    def has_already_submitted(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM survey_results WHERE emp_id = ?", (self.emp_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+
+    def save_to_database(self, responses, prediction_text):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO survey_results (
+                emp_id,
+                Satisfaction_With_Work,
+                Daily_Motivation,
+                Role_Alignment,
+                Recognition,
+                Growth_Opportunities,
+                Feedback_Quality,
+                Career_Goals_Alignment,
+                Coworker_Respect,
+                Collaborative_Environment,
+                Sense_of_Belonging,
+                Manager_Support,
+                Leadership_Trust,
+                Transparent_Communication,
+                Work_Life_Balance,
+                Wellbeing,
+                Workload_Fairness,
+                "12_Month_Commitment",
+                Job_Search_Thoughts,
+                Retention_If_Offered_Elsewhere,
+                Overall_Satisfaction,
+                Final_Verdict
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (self.emp_id, *responses, prediction_text),
         )
+        conn.commit()
+        conn.close()
+
+    def run(self):
+        st.title("📝 Employee Satisfaction Survey")
+
+        if self.has_already_submitted():
+            st.success("✅ You have already submitted your survey. Thank you!")
+
+            if st.session_state.auth_level == "admin":
+                if st.button("🔙 Back to Admin Menu"):
+                    st.session_state.admin_page = None
+                    st.rerun()
+
+            if st.button("🚪 Logout"):
+                self.logout()
+            st.stop()
 
         options = {
             "Not Satisfactory": 1,
@@ -205,71 +116,73 @@ class StreamlitSurveyView:
             "Highly Satisfied": 5,
         }
 
-        if key not in st.session_state:
-            choice = st.radio(
-                "Choose your satisfaction level:",
-                list(options.keys()),
-                index=None,
-                key=key,
-                label_visibility="collapsed",
+        responses = []
+        errors = []
+
+        with st.form("survey_form"):
+            st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+
+            for i, question in enumerate(self.questions, 1):
+                st.markdown(
+                    f"<div style='font-size:18px; font-weight:600;'>Q{i}. {question}</div>",
+                    unsafe_allow_html=True,
+                )
+                response = st.radio(
+                    label="Select your response:",
+                    options=list(options.keys()),
+                    key=f"q{i}",
+                    index=None,
+                    horizontal=True,
+                )
+                if response:
+                    responses.append(options[response])
+                else:
+                    responses.append(None)
+                    errors.append(i)
+
+                if i < len(self.questions):
+                    st.markdown(
+                        "<hr style='border: 1px solid white;'>", unsafe_allow_html=True
+                    )
+
+            submitted = st.form_submit_button("Submit")
+
+        if submitted:
+            if None in responses:
+                st.error(
+                    f"⚠️ Please answer all questions before submitting. Missing: {', '.join(f'Q{i}' for i in errors)}"
+                )
+                st.stop()
+
+            prediction_text = self.model_controller.predict_from_dict(
+                dict(zip(self.model_controller.get_features(), responses))
             )
-        else:
-            choice = st.session_state[key]
 
-        if choice is not None and len(st.session_state.responses) == idx:
-            value = options[choice]
-            self.state.add_response(value)
-            st.rerun()
+            self.save_to_database(responses, prediction_text)
+            st.success(f"✅ Your responses have been recorded.\n")
+            # st.info(f"📊 Final Verdict: **{prediction_text}**")
 
-    def display_result(self):
-        """
-        Display a success message once the survey is complete.
-        """
-        st.success("✅ Survey completed.")
+            self.submitted = True
 
-    def get_user_responses(self):
-        """
-        Retrieve user responses collected during the survey.
+            if st.session_state.auth_level == "admin":
+                if st.button("🔙 Back to Admin Menu"):
+                    st.session_state.admin_page = None
+                    st.rerun()
 
-        Returns:
-            np.ndarray: 2D array of user responses.
-        """
-        return self.state.get_responses()
+            if st.button("🚪 Logout"):
+                self.logout()
 
-    def reset_survey(self):
-        """
-        Reset the survey to its initial state.
-        """
-        self.state.reset()
+            st.stop()
 
+        st.warning("📌 Please complete and submit the form.")
 
-class FormController:
-    """
-    Controls the overall survey flow by connecting the model and UI components.
-    """
-
-    def __init__(
-        self, model_path="dataset/employee_attrition_dataset_text_verdict.csv"
-    ):
-        """
-        Initialize the controller with model and survey view.
-
-        Args:
-            model_path (str): Path to the dataset used to train the model.
-        """
-        self.model_controller = load_model(model_path)
-        self.questions = self.model_controller.view.questions
-        self.view = StreamlitSurveyView(self.questions)
-
-    def run(self):
-        """
-        Run the survey view and display prediction upon completion.
-        """
-        finished = self.view.render()
-        if finished:
-            responses = self.view.get_user_responses()
-            prediction = self.model_controller.model.predict(responses)
-            st.markdown(f"### 🔮 Predicted Employee Verdict: **{prediction}**")
-            if st.button("🔁 Start Over"):
-                self.view.reset_survey()
-                st.rerun()
+    def logout(self):
+        for key in [
+            "logged_in",
+            "emp_id",
+            "auth_level",
+            "admin_page",
+            "form_submitted",
+        ]:
+            st.session_state.pop(key, None)
+        st.rerun()

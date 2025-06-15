@@ -1,6 +1,5 @@
 import sqlite3
 import pandas as pd
-import hashlib
 import os
 
 # Config
@@ -25,7 +24,7 @@ CREATE TABLE IF NOT EXISTS employees (
 
 SURVEY_RESULTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS survey_results (
-    srno INTEGER PRIMARY KEY,
+    srno INTEGER PRIMARY KEY AUTOINCREMENT,
     emp_id TEXT,
     Satisfaction_With_Work INTEGER,
     Daily_Motivation INTEGER,
@@ -61,6 +60,15 @@ CREATE TABLE IF NOT EXISTS logins (
 );
 """
 
+# Verdict mapping
+VERDICT_MAP = {
+    1: "Will Leave",
+    2: "Likely To Leave",
+    3: "Not Decided",
+    4: "Less Likely To Leave",
+    5: "Wont Leave"
+}
+
 # Utility Functions
 def get_table_columns(cursor, table_name):
     cursor.execute(f"PRAGMA table_info({table_name})")
@@ -69,19 +77,15 @@ def get_table_columns(cursor, table_name):
 def compare_table_schema(expected_columns, actual_columns):
     return expected_columns == actual_columns
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
+# Main setup function
 def setup_database():
-    # Ensure directory for database exists
     os.makedirs(os.path.dirname(DB_NAME), exist_ok=True)
-
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     # --- Table Creation & Schema Validation ---
 
-    # Employees table
+    # Employees Table
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='employees'")
     if not cursor.fetchone():
         cursor.execute(EMPLOYEES_SCHEMA)
@@ -96,12 +100,12 @@ def setup_database():
             cursor.execute("DROP TABLE IF EXISTS employees")
             cursor.execute(EMPLOYEES_SCHEMA)
 
-    # Survey Results table
+    # Survey Results Table
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='survey_results'")
     if not cursor.fetchone():
         cursor.execute(SURVEY_RESULTS_SCHEMA)
 
-    # Logins table
+    # Logins Table
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='logins'")
     if not cursor.fetchone():
         cursor.execute(LOGINS_SCHEMA)
@@ -114,7 +118,7 @@ def setup_database():
 
     # --- Data Insert/Update ---
 
-    # Employees: Overwrite on mismatch
+    # Employees
     df_csv_employees = pd.read_csv(CSV_EMPLOYEES)
     try:
         df_db_employees = pd.read_sql_query("SELECT * FROM employees", conn)
@@ -128,28 +132,27 @@ def setup_database():
     else:
         print("[✓] employees table is up to date.")
 
-    # Survey Results: Insert only if empty
+    # Survey Results (CSV contains only emp_id to Final_Verdict with numeric verdict)
     cursor.execute("SELECT COUNT(*) FROM survey_results")
     if cursor.fetchone()[0] == 0:
         df_survey = pd.read_csv(CSV_SURVEY)
+
+        # Convert numeric Final_Verdict to text
+        df_survey["Final_Verdict"] = df_survey["Final_Verdict"].map(VERDICT_MAP)
+
+        # Insert into DB (srno is auto-handled)
         df_survey.to_sql("survey_results", conn, if_exists="append", index=False)
-        print("[✔] survey_results inserted from CSV.")
+        print("[✔] survey_results inserted from CSV with text verdicts.")
     else:
         print("[✓] survey_results already has data. Skipping.")
 
-    # Logins: Insert with hashed passwords and admin roles if empty
+    # Logins
     cursor.execute("SELECT COUNT(*) FROM logins")
     if cursor.fetchone()[0] == 0:
         df_logins = pd.read_csv(CSV_LOGINS)
-
-        # Hash passwords
-        df_logins["password"] = df_logins["password"].apply(hash_password)
-
-        # Fill NULL where authorization is empty string or NaN
-        df_logins["authorization"] = df_logins["authorization"].replace("", None)
-
+        df_logins["authorization"] = df_logins["authorization"].fillna("").replace("", "employee")
         df_logins.to_sql("logins", conn, if_exists="append", index=False)
-        print("[✔] logins inserted with hashed passwords and authorization.")
+        print("[✔] logins inserted with cleaned authorization field.")
     else:
         print("[✓] logins already has data. Skipping.")
 

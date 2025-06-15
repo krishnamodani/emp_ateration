@@ -35,4 +35,4 @@ to install all the requirements use
 
 to run the file
 
-    streamlit run runner.py
+    streamlit run main.py
